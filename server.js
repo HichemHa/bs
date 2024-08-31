@@ -5,46 +5,46 @@ const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
+
+app.use(cors());
+
 const io = socketIo(server, {
     cors: {
-        origin: "*", // Permettre toutes les origines
+        origin: "*", 
         methods: ["GET", "POST"],
         credentials: true
     }
 });
 
-app.use(cors());
-
 io.on('connection', (socket) => {
-    console.log('A user connected');
+    console.log('A user connected:', socket.id);
 
-    socket.on('createRoom', (roomId) => {
-        socket.join(roomId);
-        console.log(`Room ${roomId} created by ${socket.id}`);
-    });
+    socket.on('join', (room) => {
+        socket.join(room);
+        console.log(`User ${socket.id} joined room ${room}`);
 
-    socket.on('joinRoom', (roomId) => {
-        socket.join(roomId);
-        console.log(`${socket.id} joined room ${roomId}`);
-
-        const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
-        const broadcaster = clients.find(clientId => clientId !== socket.id);
-
-        if (broadcaster) {
-            io.to(broadcaster).emit('newViewer', { peerId: socket.id });
+        const otherClients = io.sockets.adapter.rooms.get(room);
+        if (otherClients && otherClients.size > 1) {
+            otherClients.forEach((clientId) => {
+                if (clientId !== socket.id) {
+                    io.to(clientId).emit('new-peer', { peerId: socket.id });
+                }
+            });
         }
     });
 
-    socket.on('sendStream', ({ to, stream }) => {
-        io.to(to).emit('receiveStream', { peerId: socket.id, stream });
+    socket.on('signal', (data) => {
+        const { to, signal } = data;
+        io.to(to).emit('signal', { from: socket.id, signal });
     });
 
-    socket.on('comment', ({ roomId, message }) => {
-        io.to(roomId).emit('receiveComment', { from: socket.id, message });
+    socket.on('send-comment', (data) => {
+        const { roomId, comment } = data;
+        io.to(roomId).emit('receive-comment', { userId: socket.id, comment });
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected');
+        console.log('User disconnected:', socket.id);
     });
 });
 
